@@ -10,6 +10,8 @@ Mais detalhes no site da disciplina:
 
 Integrantes:
 
+
+
 - Nome 
 - Nome
 - Nome
@@ -19,6 +21,9 @@ Nome da marca:
 - Nome e logo?
 
 ## Interface
+
+<img width="361" alt="image" src="https://github.com/insper-classroom/23b-emb-aps2-grupoaps2/assets/81189941/d3dbdff4-8e46-42f1-bb42-dcc9dc48ec5f">
+
 
 ### Proposta UX 1 - C
 
