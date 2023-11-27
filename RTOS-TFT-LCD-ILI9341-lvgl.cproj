@@ -316,7 +316,7 @@
         <documentation help="http://asf.atmel.com/docs/3.40.0/common.components.touch.mxt.example_usart.same70_xplained/html/index.html" />
         <offline-documentation help="" />
         <dependencies>
-          <content-extension eid="atmel.asf" uuidref="Atmel.ASF" version="3.42.0" />
+          <content-extension eid="atmel.asf" uuidref="Atmel.ASF" version="3.44.1" />
         </dependencies>
         <project id="common.components.touch.mxt.example_usart.same70_xplained" value="Add" config="" content-id="Atmel.ASF" />
         <board id="board.same70_xplained" value="Add" config="" content-id="Atmel.ASF" />
@@ -3080,6 +3080,9 @@
     <None Include="src\ASF\thirdparty\lvgl8\zephyr\module.yml">
       <SubType>compile</SubType>
     </None>
+    <None Include="src\imagem.webp">
+      <SubType>compile</SubType>
+    </None>
     <None Include="src\config\conf_sleepmgr.h">
       <SubType>compile</SubType>
     </None>
@@ -3831,6 +3834,9 @@
       <SubType>compile</SubType>
     </None>
     <None Include="src\ASF\thirdparty\CMSIS\README.txt">
+      <SubType>compile</SubType>
+    </None>
+    <None Include="src\imagem_correta.jpg">
       <SubType>compile</SubType>
     </None>
   </ItemGroup>

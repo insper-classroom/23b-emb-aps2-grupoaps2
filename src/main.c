@@ -8,12 +8,14 @@
 #include "lvgl.h"
 #include "touch/touch.h"
 
+
 /************************************************************************/
 /* LCD / LVGL                                                           */
 /************************************************************************/
 
 #define LV_HOR_RES_MAX          (320)
 #define LV_VER_RES_MAX          (240)
+
 
 /*A static or global variable to store the buffers*/
 static lv_disp_draw_buf_t disp_buf;
@@ -53,15 +55,52 @@ extern void vApplicationMallocFailedHook(void) {
 /* lvgl                                                                 */
 /************************************************************************/
 
+
+void lv_principal(void){
+	lv_obj_t *screen2 = lv_scr_act();
+	static lv_obj_t * labelclock;
+
+	labelclock = lv_label_create(lv_scr_act());
+	lv_obj_align(labelclock, LV_ALIGN_TOP_RIGHT, 0 , 30);
+	lv_obj_set_style_text_color(labelclock, lv_color_white(), LV_STATE_DEFAULT);
+	lv_label_set_text_fmt(labelclock, "%02d:%02d", 17,47);
+	
+}
+
+
 static void event_handler(lv_event_t * e) {
 	lv_event_code_t code = lv_event_get_code(e);
 
 	if(code == LV_EVENT_CLICKED) {
+		lv_principal();
+		printf("Clicked");
 		LV_LOG_USER("Clicked");
 	}
 	else if(code == LV_EVENT_VALUE_CHANGED) {
 		LV_LOG_USER("Toggled");
 	}
+}
+
+void lv_entrada(void) {
+	lv_obj_t *label;
+	lv_obj_t *screen = lv_scr_act();
+
+
+	// Botao start
+	lv_obj_t *btnstart = lv_btn_create(screen);
+	lv_obj_add_event_cb(btnstart, event_handler, LV_EVENT_ALL, NULL);
+	lv_obj_align(btnstart, LV_ALIGN_CENTER, 0, 40); 
+
+	label = lv_label_create(btnstart);
+	lv_label_set_text(label, "Start");
+	lv_obj_center(label);
+
+	// Foto da bike
+	
+	lv_obj_t *img = lv_img_create(screen);
+	lv_img_set_src(img, "imagem_correta.jpg");
+	lv_obj_set_pos(img, 50, 50);
+
 }
 
 void lv_ex_btn_1(void) {
@@ -89,11 +128,23 @@ void lv_ex_btn_1(void) {
 /************************************************************************/
 /* TASKS                                                                */
 /************************************************************************/
+static void task_entrada(void *pvParameters) {
+	lv_entrada();
+
+	for (;;) {
+		lv_tick_inc(50);
+		lv_task_handler();
+		vTaskDelay(50);
+	}
+}
+
+
+	
 
 static void task_lcd(void *pvParameters) {
 	int px, py;
 
-	lv_ex_btn_1();
+	//lv_ex_btn_1();
 
 	for (;;)  {
 		lv_tick_inc(50);
@@ -194,6 +245,10 @@ int main(void) {
 	configure_lvgl();
 
 	/* Create task to control oled */
+	
+	if (xTaskCreate(task_entrada, "Entrada", TASK_LCD_STACK_SIZE, NULL, TASK_LCD_STACK_PRIORITY, NULL) != pdPASS) {
+		printf("Failed to create entrada task\r\n");
+	}
 	if (xTaskCreate(task_lcd, "LCD", TASK_LCD_STACK_SIZE, NULL, TASK_LCD_STACK_PRIORITY, NULL) != pdPASS) {
 		printf("Failed to create lcd task\r\n");
 	}
