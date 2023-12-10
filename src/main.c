@@ -1,36 +1,29 @@
-/************************************************************************/
-/* includes                                                             */
-/************************************************************************/
-
 #include <asf.h>
 #include <string.h>
 #include "ili9341.h"
 #include "lvgl.h"
 #include "touch/touch.h"
-
+#include "bicicleta.h"
+#include "bike_wheel.h"
 
 /************************************************************************/
 /* LCD / LVGL                                                           */
 /************************************************************************/
 
-#define LV_HOR_RES_MAX          (320)
-#define LV_VER_RES_MAX          (240)
+#define LV_HOR_RES_MAX          (240)
+#define LV_VER_RES_MAX          (320)
 
-
-/*A static or global variable to store the buffers*/
 static lv_disp_draw_buf_t disp_buf;
-
-/*Static or global buffer(s). The second buffer is optional*/
 static lv_color_t buf_1[LV_HOR_RES_MAX * LV_VER_RES_MAX];
-static lv_disp_drv_t disp_drv;          /*A variable to hold the drivers. Must be static or global.*/
+static lv_disp_drv_t disp_drv;
 static lv_indev_drv_t indev_drv;
 
 /************************************************************************/
 /* RTOS                                                                 */
 /************************************************************************/
 
-#define TASK_LCD_STACK_SIZE                (1024*6/sizeof(portSTACK_TYPE))
-#define TASK_LCD_STACK_PRIORITY            (tskIDLE_PRIORITY)
+#define TASK_LCD_STACK_SIZE      (1024*6/sizeof(portSTACK_TYPE))
+#define TASK_LCD_STACK_PRIORITY  (tskIDLE_PRIORITY)
 
 extern void vApplicationStackOverflowHook(xTaskHandle *pxTask,  signed char *pcTaskName);
 extern void vApplicationIdleHook(void);
@@ -40,7 +33,7 @@ extern void xPortSysTickHandler(void);
 
 extern void vApplicationStackOverflowHook(xTaskHandle *pxTask, signed char *pcTaskName) {
 	printf("stack overflow %x %s\r\n", pxTask, (portCHAR *)pcTaskName);
-	for (;;) {	}
+	for (;;) { }
 }
 
 extern void vApplicationIdleHook(void) { }
@@ -51,32 +44,42 @@ extern void vApplicationMallocFailedHook(void) {
 	configASSERT( ( volatile void * ) NULL );
 }
 
+
+// Function prototypes
+void return_button_handler(lv_event_t *e);
+void arrow_up_handler(lv_event_t *e);
+void arrow_down_handler(lv_event_t *e);
+
+
+static int wheel_radius = 60;
+
 /************************************************************************/
 /* lvgl                                                                 */
 /************************************************************************/
+static lv_obj_t *scr1;  // screen 1 (lv_entrada)
+static lv_obj_t *scr2;  // screen 2 (black page)
+static lv_obj_t *scr3;  // screen 3 (settings page)
 
 
-void lv_principal(void){
+void lv_principal(void) {
 	lv_obj_t *screen2 = lv_scr_act();
-	static lv_obj_t * labelclock;
+	static lv_obj_t *labelclock;
 
 	labelclock = lv_label_create(lv_scr_act());
-	lv_obj_align(labelclock, LV_ALIGN_TOP_RIGHT, 0 , 30);
-	lv_obj_set_style_text_color(labelclock, lv_color_white(), LV_STATE_DEFAULT);
-	lv_label_set_text_fmt(labelclock, "%02d:%02d", 17,47);
-	
+	lv_obj_align(labelclock, LV_ALIGN_TOP_RIGHT, 0, 30);
+	lv_obj_set_style_text_color(labelclock, lv_color_black(), LV_STATE_DEFAULT);
+	lv_label_set_text_fmt(labelclock, "%02d:%02d", 17, 47);
 }
 
-
-static void event_handler(lv_event_t * e) {
+static void event_handler(lv_event_t *e) {
 	lv_event_code_t code = lv_event_get_code(e);
 
-	if(code == LV_EVENT_CLICKED) {
-		lv_principal();
-		printf("Clicked");
+	if (code == LV_EVENT_CLICKED) {
+		// Show the black page (scr2)
+		lv_scr_load(scr2);
+		printf("Clicked\n");
 		LV_LOG_USER("Clicked");
-	}
-	else if(code == LV_EVENT_VALUE_CHANGED) {
+		} else if (code == LV_EVENT_VALUE_CHANGED) {
 		LV_LOG_USER("Toggled");
 	}
 }
@@ -84,50 +87,229 @@ static void event_handler(lv_event_t * e) {
 void lv_entrada(void) {
 	lv_obj_t *label;
 	lv_obj_t *screen = lv_scr_act();
-
+	lv_obj_set_style_bg_color(screen, lv_color_white(), LV_PART_MAIN);
 
 	// Botao start
 	lv_obj_t *btnstart = lv_btn_create(screen);
 	lv_obj_add_event_cb(btnstart, event_handler, LV_EVENT_ALL, NULL);
-	lv_obj_align(btnstart, LV_ALIGN_CENTER, 0, 40); 
+	lv_obj_align(btnstart, LV_ALIGN_CENTER, 0, 40);
 
 	label = lv_label_create(btnstart);
 	lv_label_set_text(label, "Start");
 	lv_obj_center(label);
 
 	// Foto da bike
+	lv_obj_t *img = lv_img_create(lv_scr_act());
+	lv_img_set_src(img, &bicicleta);
+	lv_obj_align(img, LV_ALIGN_CENTER, 0, -20);
+}
+
+void refresh_button_handler(lv_event_t *e) {
+	lv_event_code_t code = lv_event_get_code(e);
+
+	if (code == LV_EVENT_CLICKED) {
+		printf("Refresh button clicked\n");
+		// Add your refresh logic here
+	}
+}
+void start_button_handler(lv_event_t *e) {
+	lv_event_code_t code = lv_event_get_code(e);
+
+	if (code == LV_EVENT_CLICKED) {
+		printf("Start button clicked\n");
+		// Add your logic for the start button here
+	}
+}
+
+void pause_button_handler(lv_event_t *e) {
+	lv_event_code_t code = lv_event_get_code(e);
+
+	if (code == LV_EVENT_CLICKED) {
+		printf("Pause button clicked\n");
+		// Add your logic for the pause button here
+	}
+}
+
+
+void arrow_up_handler(lv_event_t *e) {
+	lv_event_code_t code = lv_event_get_code(e);
+
+	if (code == LV_EVENT_CLICKED) {
+		// Increase the wheel radius when the up arrow button is clicked
+		wheel_radius++;
+		printf("Wheel Radius: %d cm\n", wheel_radius);
+
+		// Update the text label with the new radius value
+		lv_obj_t *label_radius = lv_obj_get_child(scr3, NULL);
+		lv_label_set_text_fmt(label_radius, "%d cm", wheel_radius);
+	}
+}
+
+void arrow_down_handler(lv_event_t *e) {
+	lv_event_code_t code = lv_event_get_code(e);
+
+	if (code == LV_EVENT_CLICKED) {
+		// Decrease the wheel radius when the down arrow button is clicked
+		wheel_radius--;
+		printf("Wheel Radius: %d cm\n", wheel_radius);
+
+		// Update the text label with the new radius value
+		lv_obj_t *label_radius = lv_obj_get_child(scr3, NULL);
+		lv_label_set_text_fmt(label_radius, "%d cm", wheel_radius);
+	}
+}
+
+void lv_settings_page(void) {
+	// Create an entirely white page for the settings screen
+	lv_obj_clean(scr3);
+	lv_obj_set_style_bg_color(scr3, lv_color_white(), LV_PART_MAIN);
 	
-	lv_obj_t *img = lv_img_create(screen);
-	lv_img_set_src(img, "imagem_correta.jpg");
-	lv_obj_set_pos(img, 50, 50);
+	static lv_style_t style;
+	lv_style_init(&style);
+	lv_style_set_bg_color(&style, lv_color_black());
+	lv_style_set_border_color(&style, lv_color_black());
+	lv_style_set_border_width(&style, 5);
 
+
+	// Create a return button
+	lv_obj_t *btn_return = lv_btn_create(scr3);
+	lv_obj_align(btn_return, LV_ALIGN_TOP_LEFT, 10, 10);
+	lv_obj_set_size(btn_return, 60, 30);
+	lv_obj_add_style(btn_return, &style, 0);
+	lv_obj_add_event_cb(btn_return, return_button_handler, LV_EVENT_CLICKED, NULL);
+
+	// Customize Return Button icon
+	lv_obj_t *label_return = lv_label_create(btn_return);
+	lv_label_set_text(label_return, LV_SYMBOL_LEFT);  // LV_SYMBOL_LEFT is the left arrow icon
+	lv_obj_center(label_return);
+
+	// Create an arrow-up button
+	lv_obj_t *btn_up = lv_btn_create(scr3);
+	lv_obj_align(btn_up, LV_ALIGN_TOP_MID, 50, 80);
+	lv_obj_set_size(btn_up, 60, 30);
+	lv_obj_add_style(btn_up, &style, 0);
+	lv_obj_add_event_cb(btn_up, arrow_up_handler, LV_EVENT_CLICKED, NULL);
+
+	// Customize Arrow Up Button icon
+	lv_obj_t *label_up = lv_label_create(btn_up);
+	lv_label_set_text(label_up, LV_SYMBOL_UP);  // LV_SYMBOL_UP is the up arrow icon
+	lv_obj_center(label_up);
+
+	// Create an arrow-down button
+	lv_obj_t *btn_down = lv_btn_create(scr3);
+	lv_obj_align(btn_down, LV_ALIGN_TOP_MID, 50, 140);
+	lv_obj_set_size(btn_down, 60, 30);
+	lv_obj_add_style(btn_down, &style, 0);
+	lv_obj_add_event_cb(btn_down, arrow_down_handler, LV_EVENT_CLICKED, NULL);
+
+	// Customize Arrow Down Button icon
+	lv_obj_t *label_down = lv_label_create(btn_down);
+	lv_label_set_text(label_down, LV_SYMBOL_DOWN);  // LV_SYMBOL_DOWN is the down arrow icon
+	lv_obj_center(label_down);
+	
+	lv_obj_t *img = lv_img_create(lv_scr_act());
+	lv_img_set_src(img, &bike_wheel);
+	lv_obj_align(img, LV_ALIGN_CENTER, -40, -20);
+	
+    lv_obj_t *label_radius = lv_label_create(scr3);
+    lv_label_set_text_fmt(label_radius, "%d cm", wheel_radius);
+    lv_obj_align(label_radius, LV_ALIGN_CENTER,-40, -80);
 }
 
-void lv_ex_btn_1(void) {
-	lv_obj_t * label;
+// Handler for the return button
+void return_button_handler(lv_event_t *e) {
+	lv_event_code_t code = lv_event_get_code(e);
 
-	lv_obj_t * btn1 = lv_btn_create(lv_scr_act());
-	lv_obj_add_event_cb(btn1, event_handler, LV_EVENT_ALL, NULL);
-	lv_obj_align(btn1, LV_ALIGN_CENTER, 0, -40);
-
-	label = lv_label_create(btn1);
-	lv_label_set_text(label, "Corsi");
-	lv_obj_center(label);
-
-	lv_obj_t * btn2 = lv_btn_create(lv_scr_act());
-	lv_obj_add_event_cb(btn2, event_handler, LV_EVENT_ALL, NULL);
-	lv_obj_align(btn2, LV_ALIGN_CENTER, 0, 40);
-	lv_obj_add_flag(btn2, LV_OBJ_FLAG_CHECKABLE);
-	lv_obj_set_height(btn2, LV_SIZE_CONTENT);
-
-	label = lv_label_create(btn2);
-	lv_label_set_text(label, "Toggle");
-	lv_obj_center(label);
+	if (code == LV_EVENT_CLICKED) {
+		// Show the second screen (scr2) when the return button is clicked
+		lv_scr_load(scr2);
+		printf("Return button clicked\n");
+		// Add your logic for the return button here
+	}
 }
+
+
+
+void settings_button_handler(lv_event_t *e) {
+	lv_event_code_t code = lv_event_get_code(e);
+
+	if (code == LV_EVENT_CLICKED) {
+		// Show the third screen (scr3) when the settings button is clicked
+		lv_scr_load(scr3);
+
+		// Initialize the settings page
+		lv_settings_page();
+
+		printf("Settings button clicked\n");
+		// Add your logic for the settings button here
+	}
+}
+
+
+void lv_black_page(void) {
+	// Create an entirely white page
+	lv_obj_clean(scr2);  // Clean the existing objects on scr2
+	lv_obj_set_style_bg_color(scr2, lv_color_white(), LV_PART_MAIN);
+
+	static lv_style_t style;
+	lv_style_init(&style);
+	lv_style_set_bg_color(&style, lv_color_black());
+	lv_style_set_border_color(&style, lv_color_black());
+	lv_style_set_border_width(&style, 5);
+
+	// Add a refresh button on the upper left
+	lv_obj_t *btn_refresh = lv_btn_create(scr2);
+	lv_obj_align(btn_refresh, LV_ALIGN_TOP_LEFT, 10, 10);
+	lv_obj_set_size(btn_refresh, 30, 15);
+	lv_obj_add_style(btn_refresh, &style, 0);
+	lv_obj_add_event_cb(btn_refresh, refresh_button_handler, LV_EVENT_ALL, NULL);
+
+	lv_obj_t *label_refresh = lv_label_create(btn_refresh);
+	lv_label_set_text(label_refresh, LV_SYMBOL_REFRESH);
+	lv_obj_center(label_refresh);
+
+	// Add Start Button
+	lv_obj_t *btn_start = lv_btn_create(scr2);
+	lv_obj_align(btn_start, LV_ALIGN_TOP_LEFT, 50, 10);
+	lv_obj_set_size(btn_start, 30, 15);
+	lv_obj_add_style(btn_start, &style, 0);
+	lv_obj_add_event_cb(btn_start, start_button_handler, LV_EVENT_ALL, NULL);
+
+	// Customize Start Button icon
+	lv_obj_t *label_start = lv_label_create(btn_start);
+	lv_label_set_text(label_start, LV_SYMBOL_PLAY);  // LV_SYMBOL_PLAY is the play icon
+	lv_obj_center(label_start);
+
+	// Add Pause Button
+	lv_obj_t *btn_pause = lv_btn_create(scr2);
+	lv_obj_align(btn_pause, LV_ALIGN_TOP_LEFT, 90, 10);
+	lv_obj_set_size(btn_pause, 30, 15);
+	lv_obj_add_style(btn_pause, &style, 0);
+	lv_obj_add_event_cb(btn_pause, pause_button_handler, LV_EVENT_ALL, NULL);
+
+	// Customize Pause Button icon
+	lv_obj_t *label_pause = lv_label_create(btn_pause);
+	lv_label_set_text(label_pause, LV_SYMBOL_PAUSE);  // LV_SYMBOL_PAUSE is the pause icon
+	lv_obj_center(label_pause);
+	
+	// Add Settings Button (same style as Pause Button)
+	lv_obj_t *btn_settings = lv_btn_create(scr2);
+	lv_obj_align(btn_settings, LV_ALIGN_BOTTOM_LEFT, 10, -10);
+	lv_obj_set_size(btn_settings, 60, 30);
+	lv_obj_add_style(btn_settings, &style, 0);
+	lv_obj_add_event_cb(btn_settings, settings_button_handler, LV_EVENT_ALL, NULL);
+
+	// Customize Settings Button icon
+	lv_obj_t *label_settings = lv_label_create(btn_settings);
+	lv_label_set_text(label_settings, LV_SYMBOL_SETTINGS);  // LV_SYMBOL_SETTINGS is the settings icon
+	lv_obj_center(label_settings);
+}
+
 
 /************************************************************************/
 /* TASKS                                                                */
 /************************************************************************/
+
 static void task_entrada(void *pvParameters) {
 	lv_entrada();
 
@@ -138,21 +320,13 @@ static void task_entrada(void *pvParameters) {
 	}
 }
 
+static void task_black_page(void *pvParameters) {
+	lv_black_page();
 
-	
-
-static void task_lcd(void *pvParameters) {
-	int px, py;
-
-	//lv_ex_btn_1();
-
-	for (;;)  {
-		lv_tick_inc(50);
-		lv_task_handler();
-		vTaskDelay(50);
+	for (;;) {
+		vTaskDelay(500);
 	}
 }
-
 /************************************************************************/
 /* configs                                                              */
 /************************************************************************/
@@ -202,59 +376,62 @@ void my_input_read(lv_indev_drv_t * drv, lv_indev_data_t*data) {
 	int px, py, pressed;
 	
 	if (readPoint(&px, &py))
-		data->state = LV_INDEV_STATE_PRESSED;
+	data->state = LV_INDEV_STATE_PRESSED;
 	else
-		data->state = LV_INDEV_STATE_RELEASED; 
+	data->state = LV_INDEV_STATE_RELEASED;
 	
-	data->point.x = px;
-	data->point.y = py;
+	data->point.x = py;
+	data->point.y = 320-px;
 }
 
 void configure_lvgl(void) {
 	lv_init();
 	lv_disp_draw_buf_init(&disp_buf, buf_1, NULL, LV_HOR_RES_MAX * LV_VER_RES_MAX);
-	
-	lv_disp_drv_init(&disp_drv);            /*Basic initialization*/
-	disp_drv.draw_buf = &disp_buf;          /*Set an initialized buffer*/
-	disp_drv.flush_cb = my_flush_cb;        /*Set a flush callback to draw to the display*/
-	disp_drv.hor_res = LV_HOR_RES_MAX;      /*Set the horizontal resolution in pixels*/
-	disp_drv.ver_res = LV_VER_RES_MAX;      /*Set the vertical resolution in pixels*/
 
-	lv_disp_t * disp;
-	disp = lv_disp_drv_register(&disp_drv); /*Register the driver and save the created display objects*/
-	
-	/* Init input on LVGL */
+	lv_disp_drv_init(&disp_drv);
+	disp_drv.draw_buf = &disp_buf;
+	disp_drv.flush_cb = my_flush_cb;
+	disp_drv.hor_res = LV_HOR_RES_MAX;
+	disp_drv.ver_res = LV_VER_RES_MAX;
+
+	lv_disp_drv_register(&disp_drv);
+
 	lv_indev_drv_init(&indev_drv);
 	indev_drv.type = LV_INDEV_TYPE_POINTER;
 	indev_drv.read_cb = my_input_read;
-	lv_indev_t * my_indev = lv_indev_drv_register(&indev_drv);
+	lv_indev_drv_register(&indev_drv);
 }
 
 /************************************************************************/
-/* main                                                                 */
+/* Main                                                                 */
 /************************************************************************/
+
 int main(void) {
-	/* board and sys init */
 	board_init();
 	sysclk_init();
 	configure_console();
-
-	/* LCd, touch and lvgl init*/
 	configure_lcd();
 	configure_touch();
 	configure_lvgl();
+	ili9341_set_orientation(ILI9341_FLIP_Y | ILI9341_SWITCH_XY);
 
-	/* Create task to control oled */
-	
+	// Initialize screens
+	scr1 = lv_obj_create(NULL);
+	scr2 = lv_obj_create(NULL);
+	scr3 = lv_obj_create(NULL);
+
+
+	// Create tasks
 	if (xTaskCreate(task_entrada, "Entrada", TASK_LCD_STACK_SIZE, NULL, TASK_LCD_STACK_PRIORITY, NULL) != pdPASS) {
 		printf("Failed to create entrada task\r\n");
 	}
-	if (xTaskCreate(task_lcd, "LCD", TASK_LCD_STACK_SIZE, NULL, TASK_LCD_STACK_PRIORITY, NULL) != pdPASS) {
-		printf("Failed to create lcd task\r\n");
+
+	if (xTaskCreate(task_black_page, "BlackPage", TASK_LCD_STACK_SIZE, NULL, TASK_LCD_STACK_PRIORITY, NULL) != pdPASS) {
+		printf("Failed to create black page task\r\n");
 	}
-	
-	/* Start the scheduler. */
+
 	vTaskStartScheduler();
 
-	while(1){ }
+	while (1) {
+	}
 }

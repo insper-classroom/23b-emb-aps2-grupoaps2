@@ -2264,6 +2264,12 @@
     <Compile Include="src\ASF\thirdparty\lvgl8\tests\unity\unity_support.h">
       <SubType>compile</SubType>
     </Compile>
+    <Compile Include="src\bicicleta.h">
+      <SubType>compile</SubType>
+    </Compile>
+    <Compile Include="src\bike_wheel.h">
+      <SubType>compile</SubType>
+    </Compile>
     <Compile Include="src\config\conf_touch.h">
       <SubType>compile</SubType>
     </Compile>
@@ -3080,9 +3086,6 @@
     <None Include="src\ASF\thirdparty\lvgl8\zephyr\module.yml">
       <SubType>compile</SubType>
     </None>
-    <None Include="src\imagem.webp">
-      <SubType>compile</SubType>
-    </None>
     <None Include="src\config\conf_sleepmgr.h">
       <SubType>compile</SubType>
     </None>
@@ -3834,9 +3837,6 @@
       <SubType>compile</SubType>
     </None>
     <None Include="src\ASF\thirdparty\CMSIS\README.txt">
-      <SubType>compile</SubType>
-    </None>
-    <None Include="src\imagem_correta.jpg">
       <SubType>compile</SubType>
     </None>
   </ItemGroup>
