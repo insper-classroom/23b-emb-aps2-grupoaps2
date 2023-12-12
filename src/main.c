@@ -13,6 +13,9 @@
 #define LV_HOR_RES_MAX          (240)
 #define LV_VER_RES_MAX          (320)
 
+LV_FONT_DECLARE(dseg70);
+
+
 static lv_disp_draw_buf_t disp_buf;
 static lv_color_t buf_1[LV_HOR_RES_MAX * LV_VER_RES_MAX];
 static lv_disp_drv_t disp_drv;
@@ -52,6 +55,15 @@ void arrow_down_handler(lv_event_t *e);
 
 
 static int wheel_radius = 60;
+static int distancia_percurso = 0;
+static int velocidade_percurso = 0;
+static int duracao_percurso = 0;
+static lv_obj_t * label_radius;
+static int speed_principal = 0;
+
+static int acelerando = 0;
+static int captando_informacoes = 0;
+
 
 /************************************************************************/
 /* lvgl                                                                 */
@@ -136,12 +148,15 @@ void arrow_up_handler(lv_event_t *e) {
 
 	if (code == LV_EVENT_CLICKED) {
 		// Increase the wheel radius when the up arrow button is clicked
-		wheel_radius++;
-		printf("Wheel Radius: %d cm\n", wheel_radius);
 
 		// Update the text label with the new radius value
-		lv_obj_t *label_radius = lv_obj_get_child(scr3, NULL);
-		lv_label_set_text_fmt(label_radius, "%d cm", wheel_radius);
+		char *c;
+		int raio;
+		
+		c = lv_label_get_text(label_radius);
+		raio = atoi(c);
+		lv_label_set_text_fmt(label_radius, "%d cm", raio + 1);
+		wheel_radius++;
 	}
 }
 
@@ -149,13 +164,16 @@ void arrow_down_handler(lv_event_t *e) {
 	lv_event_code_t code = lv_event_get_code(e);
 
 	if (code == LV_EVENT_CLICKED) {
-		// Decrease the wheel radius when the down arrow button is clicked
-		wheel_radius--;
-		printf("Wheel Radius: %d cm\n", wheel_radius);
+		// Increase the wheel radius when the up arrow button is clicked
 
 		// Update the text label with the new radius value
-		lv_obj_t *label_radius = lv_obj_get_child(scr3, NULL);
-		lv_label_set_text_fmt(label_radius, "%d cm", wheel_radius);
+		char *c;
+		int raio;
+		
+		c = lv_label_get_text(label_radius);
+		raio = atoi(c);
+		lv_label_set_text_fmt(label_radius, "%d cm", raio - 1);
+		wheel_radius--;
 	}
 }
 
@@ -192,7 +210,7 @@ void lv_settings_page(void) {
 
 	// Customize Arrow Up Button icon
 	lv_obj_t *label_up = lv_label_create(btn_up);
-	lv_label_set_text(label_up, LV_SYMBOL_UP);  // LV_SYMBOL_UP is the up arrow icon
+	lv_label_set_text(label_up, LV_SYMBOL_PLUS);  // LV_SYMBOL_UP is the up arrow icon
 	lv_obj_center(label_up);
 
 	// Create an arrow-down button
@@ -204,14 +222,14 @@ void lv_settings_page(void) {
 
 	// Customize Arrow Down Button icon
 	lv_obj_t *label_down = lv_label_create(btn_down);
-	lv_label_set_text(label_down, LV_SYMBOL_DOWN);  // LV_SYMBOL_DOWN is the down arrow icon
+	lv_label_set_text(label_down, LV_SYMBOL_MINUS);  // LV_SYMBOL_DOWN is the down arrow icon
 	lv_obj_center(label_down);
 	
 	lv_obj_t *img = lv_img_create(lv_scr_act());
 	lv_img_set_src(img, &bike_wheel);
 	lv_obj_align(img, LV_ALIGN_CENTER, -40, -20);
 	
-    lv_obj_t *label_radius = lv_label_create(scr3);
+    label_radius = lv_label_create(scr3);
     lv_label_set_text_fmt(label_radius, "%d cm", wheel_radius);
     lv_obj_align(label_radius, LV_ALIGN_CENTER,-40, -80);
 }
@@ -303,6 +321,52 @@ void lv_black_page(void) {
 	lv_obj_t *label_settings = lv_label_create(btn_settings);
 	lv_label_set_text(label_settings, LV_SYMBOL_SETTINGS);  // LV_SYMBOL_SETTINGS is the settings icon
 	lv_obj_center(label_settings);
+	
+	// Add Distance Label
+	lv_obj_t *label_distance = lv_label_create(scr2);
+    lv_label_set_text_fmt(label_distance, "Distancia: %d M", distancia_percurso);
+	lv_obj_align(label_distance, LV_ALIGN_BOTTOM_MID, -40, -80);
+
+	// Add Duration Label
+	lv_obj_t *label_duration = lv_label_create(scr2);
+    lv_label_set_text_fmt(label_duration, "Duracao: %d Min", duracao_percurso);
+	lv_obj_align(label_duration, LV_ALIGN_BOTTOM_MID, -40, -60);
+
+	// Add Speed Label
+	lv_obj_t *label_speed = lv_label_create(scr2);
+    lv_label_set_text_fmt(label_speed, "Velocidade media: %d KM/H", velocidade_percurso);
+	lv_obj_align(label_speed, LV_ALIGN_BOTTOM_MID, -40, -100);
+	
+	lv_obj_t *label_big_number = lv_label_create(scr2);
+	lv_label_set_text_fmt(label_big_number, "%d KM/H", speed_principal);
+	lv_obj_set_style_text_font(label_big_number, &dseg70, 0);  // Adjust the font size as needed
+	lv_obj_align(label_big_number, LV_ALIGN_CENTER, 0, -20);
+	
+	  lv_obj_t *icon;
+	  if (acelerando == 1) {
+		  // Create a checkmark icon
+		  icon = lv_label_create(scr2);
+		  lv_label_set_text(icon, LV_SYMBOL_UP);
+		  } else {
+		  // Create a cross icon
+		  icon = lv_label_create(scr2);
+		  lv_label_set_text(icon, LV_SYMBOL_DOWN);
+	  }
+
+	  lv_obj_align(icon, LV_ALIGN_CENTER, 40, 0);
+	  
+	  lv_obj_t *captacao_icon;
+	  if (captando_informacoes == 1) {
+		  // Create a checkmark icon
+		  captacao_icon = lv_label_create(scr2);
+		  lv_label_set_text(captacao_icon, LV_SYMBOL_OK);
+		  } else {
+		  // Create a cross icon
+		  captacao_icon = lv_label_create(scr2);
+		  lv_label_set_text(captacao_icon, LV_SYMBOL_CLOSE);
+	  }
+	  
+	      lv_obj_align(captacao_icon, LV_ALIGN_CENTER, 40, -20);
 }
 
 
