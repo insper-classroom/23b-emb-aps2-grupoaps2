@@ -61,7 +61,7 @@ static int duracao_percurso = 0;
 static lv_obj_t * label_radius;
 static int speed_principal = 0;
 
-static int acelerando = 0;
+static int acelerando = 0; //0 --> desacelerando, //1 --> acelerando, // 2 --> constante
 static int captando_informacoes = 0;
 
 
@@ -347,7 +347,12 @@ void lv_black_page(void) {
 		  // Create a checkmark icon
 		  icon = lv_label_create(scr2);
 		  lv_label_set_text(icon, LV_SYMBOL_UP);
-		  } else {
+		  }
+		  if (acelerando == 2){
+			icon = lv_label_create(scr2);
+			lv_label_set_text(icon, LV_SYMBOL_MINUS);
+			  
+		  }else {
 		  // Create a cross icon
 		  icon = lv_label_create(scr2);
 		  lv_label_set_text(icon, LV_SYMBOL_DOWN);
