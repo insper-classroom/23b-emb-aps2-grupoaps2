@@ -5,13 +5,31 @@
 #include "touch/touch.h"
 #include "bicicleta.h"
 #include "bike_wheel.h"
+#include "arm_math.h"
+
+
+
 
 /************************************************************************/
 /* LCD / LVGL                                                           */
 /************************************************************************/
 
+typedef struct  {
+	uint32_t year;
+	uint32_t month;
+	uint32_t day;
+	uint32_t week;
+	uint32_t hour;
+	uint32_t minute;
+	uint32_t seccond;
+} calendar;
+
 #define LV_HOR_RES_MAX          (240)
 #define LV_VER_RES_MAX          (320)
+#define TASK_SIMULATOR_STACK_SIZE (4096 / sizeof(portSTACK_TYPE))
+#define TASK_SIMULATOR_STACK_PRIORITY (tskIDLE_PRIORITY)
+
+
 
 LV_FONT_DECLARE(dseg70);
 
@@ -47,22 +65,43 @@ extern void vApplicationMallocFailedHook(void) {
 	configASSERT( ( volatile void * ) NULL );
 }
 
+uint32_t current_hour, current_min, current_sec;
+uint32_t current_year, current_month, current_day, current_week;
 
-// Function prototypes
+
 void return_button_handler(lv_event_t *e);
 void arrow_up_handler(lv_event_t *e);
 void arrow_down_handler(lv_event_t *e);
+void RTC_Handler(void);
+void RTC_init(Rtc *rtc, uint32_t id_rtc, calendar t, uint32_t irq_type);
 
 
-static int wheel_radius = 60;
+int hora = 12;
+int minuto = 47;
+int segundo = 0;
+
+#define RAIO 0.508/2
+#define VEL_MAX_KMH  5.0f
+#define VEL_MIN_KMH  0.5f
+//#define RAMP
+int ramp = 1;
+
+static int wheel_radius = 20;
 static int distancia_percurso = 0;
-static int velocidade_percurso = 0;
+volatile int velocidade_percurso = 0;
 static int duracao_percurso = 0;
 static lv_obj_t * label_radius;
 static int speed_principal = 0;
 
-static int acelerando = 0; //0 --> desacelerando, //1 --> acelerando, // 2 --> constante
+int acelerando = 0; //0 --> desacelerando, //1 --> acelerando, // 2 --> constante
 static int captando_informacoes = 0;
+
+SemaphoreHandle_t xSemaphore;
+static lv_obj_t *label_big_number;
+static lv_obj_t *icon;
+static lv_obj_t *label_clock;
+
+
 
 
 /************************************************************************/
@@ -72,6 +111,23 @@ static lv_obj_t *scr1;  // screen 1 (lv_entrada)
 static lv_obj_t *scr2;  // screen 2 (black page)
 static lv_obj_t *scr3;  // screen 3 (settings page)
 
+/**
+* raio 20" => 50,8 cm (diametro) => 0.508/2 = 0.254m (raio)
+* w = 2 pi f (m/s)
+* v [km/h] = (w*r) / 3.6 = (2 pi f r) / 3.6
+* f = v / (2 pi r 3.6)
+* Exemplo : 5 km / h = 1.38 m/s
+*           f = 0.87Hz
+*           t = 1/f => 1/0.87 = 1,149s
+*/
+float kmh_to_hz(float vel, float raio) {
+	float f = vel / (2*PI*raio*3.6);
+	return(f);
+}
+
+void format_time(char *buffer, uint32_t hour, uint32_t min, uint32_t sec) {
+	snprintf(buffer, 9, "%02d:%02d:%02d", hour, min, sec);
+}
 
 void lv_principal(void) {
 	lv_obj_t *screen2 = lv_scr_act();
@@ -87,7 +143,6 @@ static void event_handler(lv_event_t *e) {
 	lv_event_code_t code = lv_event_get_code(e);
 
 	if (code == LV_EVENT_CLICKED) {
-		// Show the black page (scr2)
 		lv_scr_load(scr2);
 		printf("Clicked\n");
 		LV_LOG_USER("Clicked");
@@ -121,7 +176,6 @@ void refresh_button_handler(lv_event_t *e) {
 
 	if (code == LV_EVENT_CLICKED) {
 		printf("Refresh button clicked\n");
-		// Add your refresh logic here
 	}
 }
 void start_button_handler(lv_event_t *e) {
@@ -129,7 +183,6 @@ void start_button_handler(lv_event_t *e) {
 
 	if (code == LV_EVENT_CLICKED) {
 		printf("Start button clicked\n");
-		// Add your logic for the start button here
 	}
 }
 
@@ -138,7 +191,6 @@ void pause_button_handler(lv_event_t *e) {
 
 	if (code == LV_EVENT_CLICKED) {
 		printf("Pause button clicked\n");
-		// Add your logic for the pause button here
 	}
 }
 
@@ -147,9 +199,7 @@ void arrow_up_handler(lv_event_t *e) {
 	lv_event_code_t code = lv_event_get_code(e);
 
 	if (code == LV_EVENT_CLICKED) {
-		// Increase the wheel radius when the up arrow button is clicked
 
-		// Update the text label with the new radius value
 		char *c;
 		int raio;
 		
@@ -164,9 +214,7 @@ void arrow_down_handler(lv_event_t *e) {
 	lv_event_code_t code = lv_event_get_code(e);
 
 	if (code == LV_EVENT_CLICKED) {
-		// Increase the wheel radius when the up arrow button is clicked
 
-		// Update the text label with the new radius value
 		char *c;
 		int raio;
 		
@@ -178,7 +226,6 @@ void arrow_down_handler(lv_event_t *e) {
 }
 
 void lv_settings_page(void) {
-	// Create an entirely white page for the settings screen
 	lv_obj_clean(scr3);
 	lv_obj_set_style_bg_color(scr3, lv_color_white(), LV_PART_MAIN);
 	
@@ -229,9 +276,9 @@ void lv_settings_page(void) {
 	lv_img_set_src(img, &bike_wheel);
 	lv_obj_align(img, LV_ALIGN_CENTER, -40, -20);
 	
-    label_radius = lv_label_create(scr3);
-    lv_label_set_text_fmt(label_radius, "%d cm", wheel_radius);
-    lv_obj_align(label_radius, LV_ALIGN_CENTER,-40, -80);
+	label_radius = lv_label_create(scr3);
+	lv_label_set_text_fmt(label_radius, "%d cm", wheel_radius);
+	lv_obj_align(label_radius, LV_ALIGN_CENTER,-40, -80);
 }
 
 // Handler for the return button
@@ -239,10 +286,8 @@ void return_button_handler(lv_event_t *e) {
 	lv_event_code_t code = lv_event_get_code(e);
 
 	if (code == LV_EVENT_CLICKED) {
-		// Show the second screen (scr2) when the return button is clicked
 		lv_scr_load(scr2);
 		printf("Return button clicked\n");
-		// Add your logic for the return button here
 	}
 }
 
@@ -252,21 +297,17 @@ void settings_button_handler(lv_event_t *e) {
 	lv_event_code_t code = lv_event_get_code(e);
 
 	if (code == LV_EVENT_CLICKED) {
-		// Show the third screen (scr3) when the settings button is clicked
 		lv_scr_load(scr3);
 
-		// Initialize the settings page
 		lv_settings_page();
 
 		printf("Settings button clicked\n");
-		// Add your logic for the settings button here
 	}
 }
 
 
 void lv_black_page(void) {
-	// Create an entirely white page
-	lv_obj_clean(scr2);  // Clean the existing objects on scr2
+	lv_obj_clean(scr2);
 	lv_obj_set_style_bg_color(scr2, lv_color_white(), LV_PART_MAIN);
 
 	static lv_style_t style;
@@ -275,7 +316,6 @@ void lv_black_page(void) {
 	lv_style_set_border_color(&style, lv_color_black());
 	lv_style_set_border_width(&style, 5);
 
-	// Add a refresh button on the upper left
 	lv_obj_t *btn_refresh = lv_btn_create(scr2);
 	lv_obj_align(btn_refresh, LV_ALIGN_TOP_LEFT, 10, 10);
 	lv_obj_set_size(btn_refresh, 30, 15);
@@ -307,7 +347,7 @@ void lv_black_page(void) {
 
 	// Customize Pause Button icon
 	lv_obj_t *label_pause = lv_label_create(btn_pause);
-	lv_label_set_text(label_pause, LV_SYMBOL_PAUSE);  // LV_SYMBOL_PAUSE is the pause icon
+	lv_label_set_text(label_pause, LV_SYMBOL_PAUSE);
 	lv_obj_center(label_pause);
 	
 	// Add Settings Button (same style as Pause Button)
@@ -319,60 +359,58 @@ void lv_black_page(void) {
 
 	// Customize Settings Button icon
 	lv_obj_t *label_settings = lv_label_create(btn_settings);
-	lv_label_set_text(label_settings, LV_SYMBOL_SETTINGS);  // LV_SYMBOL_SETTINGS is the settings icon
+	lv_label_set_text(label_settings, LV_SYMBOL_SETTINGS);
 	lv_obj_center(label_settings);
 	
 	// Add Distance Label
 	lv_obj_t *label_distance = lv_label_create(scr2);
-    lv_label_set_text_fmt(label_distance, "Distancia: %d M", distancia_percurso);
+	lv_label_set_text_fmt(label_distance, "Distancia: %d M", distancia_percurso);
 	lv_obj_align(label_distance, LV_ALIGN_BOTTOM_MID, -40, -80);
 
 	// Add Duration Label
 	lv_obj_t *label_duration = lv_label_create(scr2);
-    lv_label_set_text_fmt(label_duration, "Duracao: %d Min", duracao_percurso);
+	lv_label_set_text_fmt(label_duration, "Duracao: %d Min", duracao_percurso);
 	lv_obj_align(label_duration, LV_ALIGN_BOTTOM_MID, -40, -60);
 
 	// Add Speed Label
 	lv_obj_t *label_speed = lv_label_create(scr2);
-    lv_label_set_text_fmt(label_speed, "Velocidade media: %d KM/H", velocidade_percurso);
+	lv_label_set_text_fmt(label_speed, "Vel media: %d KM/H", velocidade_percurso);
 	lv_obj_align(label_speed, LV_ALIGN_BOTTOM_MID, -40, -100);
 	
-	lv_obj_t *label_big_number = lv_label_create(scr2);
-	lv_label_set_text_fmt(label_big_number, "%d KM/H", speed_principal);
-	lv_obj_set_style_text_font(label_big_number, &dseg70, 0);  // Adjust the font size as needed
-	lv_obj_align(label_big_number, LV_ALIGN_CENTER, 0, -20);
+	label_big_number = lv_label_create(scr2);
+	lv_label_set_text_fmt(label_big_number, "%d ", speed_principal);
+	lv_obj_set_style_text_font(label_big_number, &dseg70, 0);
+	lv_obj_align(label_big_number, LV_ALIGN_CENTER, -20, -20);
 	
-	  lv_obj_t *icon;
-	  if (acelerando == 1) {
-		  // Create a checkmark icon
-		  icon = lv_label_create(scr2);
-		  lv_label_set_text(icon, LV_SYMBOL_UP);
-		  }
-		  if (acelerando == 2){
-			icon = lv_label_create(scr2);
-			lv_label_set_text(icon, LV_SYMBOL_MINUS);
-			  
-		  }else {
-		  // Create a cross icon
-		  icon = lv_label_create(scr2);
-		  lv_label_set_text(icon, LV_SYMBOL_DOWN);
-	  }
+	printf("Acelerando: %d",acelerando);
+	
+	icon = lv_label_create(scr2);
+	lv_label_set_text(icon, LV_SYMBOL_MINUS);
+	lv_obj_align(icon, LV_ALIGN_CENTER, 40, 0);
 
-	  lv_obj_align(icon, LV_ALIGN_CENTER, 40, 0);
-	  
-	  lv_obj_t *captacao_icon;
-	  if (captando_informacoes == 1) {
-		  // Create a checkmark icon
-		  captacao_icon = lv_label_create(scr2);
-		  lv_label_set_text(captacao_icon, LV_SYMBOL_OK);
-		  } else {
-		  // Create a cross icon
-		  captacao_icon = lv_label_create(scr2);
-		  lv_label_set_text(captacao_icon, LV_SYMBOL_CLOSE);
-	  }
-	  
-	      lv_obj_align(captacao_icon, LV_ALIGN_CENTER, 40, -20);
+	
+
+
+	
+	
+	lv_obj_t *captacao_icon;
+	if (captando_informacoes == 1) {
+		captacao_icon = lv_label_create(scr2);
+		lv_label_set_text(captacao_icon, LV_SYMBOL_OK);
+		} else {
+		captacao_icon = lv_label_create(scr2);
+		lv_label_set_text(captacao_icon, LV_SYMBOL_CLOSE);
+	}
+	
+	lv_obj_align(captacao_icon, LV_ALIGN_CENTER, 40, -20);
+	
+	label_clock = lv_label_create(scr2);
+	lv_obj_align(label_clock, LV_ALIGN_TOP_RIGHT, -10, 10);
+	lv_label_set_text_fmt(label_clock, "%02d:%02d:%02d", hora, minuto, segundo);
+
+
 }
+
 
 
 /************************************************************************/
@@ -393,7 +431,86 @@ static void task_black_page(void *pvParameters) {
 	lv_black_page();
 
 	for (;;) {
-		vTaskDelay(500);
+
+
+		vTaskDelay(1000);
+	}
+}
+
+static void task_simulador(void *pvParameters) {
+
+	pmc_enable_periph_clk(ID_PIOC);
+	pio_set_output(PIOC, PIO_PC31, 1, 0, 0);
+
+	float vel = VEL_MAX_KMH;
+	float f;
+	int ramp_up = 1;
+	int vel_passada = 0;
+
+	while(1){
+		pio_clear(PIOC, PIO_PC31);
+		delay_ms(1);
+		pio_set(PIOC, PIO_PC31);
+		if (ramp){
+			
+			if (ramp_up) {
+				printf("[SIMU] ACELERANDO: %d \n", (int) (10*vel));
+				acelerando = 1;
+				
+				lv_label_set_text(icon, LV_SYMBOL_UP);
+				
+				
+				
+				
+				vel += 0.5;
+				} else {
+				printf("[SIMU] DESACELERANDO: %d \n",  (int) (10*vel));
+				lv_label_set_text(icon, LV_SYMBOL_DOWN);
+
+				acelerando = 0;
+				vel -= 0.5;
+			}
+
+			if (vel >= VEL_MAX_KMH)
+			ramp_up = 0;
+			else if (vel <= VEL_MIN_KMH)
+			ramp_up = 1;
+			}else{
+			vel = 5;
+			printf("[SIMU] CONSTANTE: %d \n", (int) (10*vel));
+			lv_label_set_text(icon, LV_SYMBOL_MINUS);
+
+			acelerando = 2;
+		}
+						lv_label_set_text_fmt(label_clock, "%02d:%02d:%02d", hora, minuto, segundo+=1);
+						if (segundo>= 59){
+							segundo = 0;
+							minuto++;
+						}
+						if (minuto>=60){
+							minuto = 0;
+							segundo = 0;
+							hora++;
+						}
+						if (hora>=24){
+							hora = 0;
+							minuto = 0;
+							segundo = 0;
+						}
+		lv_label_set_text_fmt(label_big_number, "%d ", (int)(10 * vel));
+
+
+		
+		
+
+		f = kmh_to_hz(vel, (RAIO));
+		int t = 965*(1.0/f); //UTILIZADO 965 como multiplicador ao invés de 1000
+		//para compensar o atraso gerado pelo Escalonador do freeRTOS
+		
+
+
+		delay_ms(t);
+		
 	}
 }
 /************************************************************************/
@@ -483,11 +600,16 @@ int main(void) {
 	configure_touch();
 	configure_lvgl();
 	ili9341_set_orientation(ILI9341_FLIP_Y | ILI9341_SWITCH_XY);
+	
 
 	// Initialize screens
 	scr1 = lv_obj_create(NULL);
 	scr2 = lv_obj_create(NULL);
 	scr3 = lv_obj_create(NULL);
+	
+	xSemaphore = xSemaphoreCreateBinary();
+	if (xSemaphore == NULL)
+	printf("falha em criar o semaforo \n");
 
 
 	// Create tasks
@@ -498,6 +620,10 @@ int main(void) {
 	if (xTaskCreate(task_black_page, "BlackPage", TASK_LCD_STACK_SIZE, NULL, TASK_LCD_STACK_PRIORITY, NULL) != pdPASS) {
 		printf("Failed to create black page task\r\n");
 	}
+	if (xTaskCreate(task_simulador, "SIMUL", TASK_SIMULATOR_STACK_SIZE, NULL, TASK_SIMULATOR_STACK_PRIORITY, NULL) != pdPASS) {
+		printf("Failed to create lcd task\r\n");
+	}
+	
 
 	vTaskStartScheduler();
 
